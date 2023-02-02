@@ -1,0 +1,150 @@
+﻿#环境部署
+
+1. miniconda安装的是Python，详见：
+https://blog.csdn.net/liu523577232/article/details/122045725
+
+2. 创建Python环境
+conda create python=3.8 --name py38
+
+3. 安装tensorRT环境
+#解压 TensorRT-7.2.2.3.Ubuntu-16.04.x86_64-gnu.cuda-11.1.cudnn8.0.tar.gz
+#配置环境变量
+vim /etc/profile
+export CUDA_HOME=/usr/local/cuda-11.2
+export LD_LIBRARY_PATH=${CUDA_HOME}/lib64
+export LD_LIBRARY_PATH=${CUDA_HOME}/targets/x86_64-linux/lib:${LD_LIBRARY_PATH}
+export LD_LIBBARY_PAHT=/opt/TensorRT-7.2.2.3/lib:${PATH}
+export LD_LIBRARY_PATH=/opt/TensorRT-7.2.2.3/lib:${LD_LIBRARY_PATH}
+export LD_LIBRARY_PATH=/opt/TensorRT-7.2.2.3/bin:${LD_LIBRARY_PATH}
+export LD_LIBRARY_PATH=/opt/TensorRT-7.2.2.3/targets/x86_64-linux-gnu/lib:${LD_LIBRARY_PATH}
+export PATH=${CUDA_HOME}/bin:${PATH}
+
+4. 安装opencv编译环境
+    1） 编译安装ffmpeg，配置ffmpeg环境变量，编译ffmpeg时要注意，./configure --enable-nonfree --enable-pic --enable-shared，不然会报错 `ff_a64_muxer' can not be used when making a shared object
+        需要修改gcc编译参数 -fPIC https://blog.csdn.net/ssf1987/article/details/81118631
+    2） http://t.zoukankan.com/KdeS-p-14928201.html
+        2.1 sudo apt-get install cmake
+            sudo apt-get install build-essential libgtk2.0-dev libavcodec-dev libavformat-dev libjpeg-dev libswscale-dev libtiff5-dev
+            sudo apt-get install libgtk2.0-dev
+            sudo apt-get install libtiff4.dev  libjasper1 libjasper-dev
+        2.2 https://opencv.org/releases/ 下载自己需要的版本4.5.0
+            unzip opencv-4.5.0.zip
+            cd opencv-4.5.0/
+            mkdir build
+            cd build/
+            cmake ..
+            make
+            make install
+    3) 测试环境 opencv_version
+
+5. cudnn
+    1) 查看版本：cat /usr/local/cuda-11.2/include/cudnn_version.h | grep CUDNN_MAJOR -A 2
+
+#进入python环境
+conda activate py38
+
+#关联TensorRT和Python环境
+cd /opt/TensorRT-7.2.2.3/python
+pip3 install tensorrt-7.2.2.3-cp38-none-linux_x86_64.whl
+
+cd /opt/TensorRT-7.2.2.3/uff
+pip3 install uff-0.6.9-py2.py3-none-any.whl -i https://pypi.tuna.tsinghua.edu.cn/simple/
+
+#libnvrtc.so.11.1 找不到，需要编译安装11.1版本的库
+https://blog.csdn.net/weixin_46455141/article/details/125579008
+https://developer.nvidia.com/cuda-11.1.1-download-archive 下载
+cp libnvrtc.so.11.1 /usr/local/cuda/lib64
+cp libnvrtc-builtins.so.11.1 /usr/local/cuda/lib64/
+
+#查看tensorrt版本
+import tensorrt as trt
+trt.__version__
+#查看uff版本
+import uff
+uff.__version__
+
+
+验证：
+进入python环境，import tensorrt；
+
+#ImportError: libnvinfer.so.7报错：需要配置cuda的环境变量，还不行就直接吧lib和include拷贝进 /usr/include /usr/lib
+
+
+#安装yolov5开发环境
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+# CUDA 11.1 如果报错CUDA error: no kernel image is available for execution on the device，是由于pytorch版本和显卡算力不兼容，更换pytorch
+pip install torch==1.10.1+cu111 torchvision==0.11.2+cu111 torchaudio==0.10.1 -f https://download.pytorch.org/whl/torch_stable.html
+pip install torch==1.9.0+cu111 torchvision==0.10.0+cu111 torchaudio==0.10.1 -f https://download.pytorch.org/whl/torch_stable.html
+
+
+##测试pytorch 是否可用，详见https://blog.csdn.net/HPGaa/article/details/117230868
+import torch
+torch.cuda.is_available()
+# 返回True 接着用下列代码进一步测试
+torch.zeros(1).cuda()
+
+
+# 训练
+
+# 进入项目路径
+cd /root/PycharmProjects/yc-yolov5
+
+
+# 准备数据集 指定训练安全帽数据集
+vim data/helmet.yaml
+
+# 运行训练脚本
+vim train.sh
+#需要修改gpu编号，从0开始，以“,”分割; 需要修改数据集名称
+#batch size的设置主要看经验。5000样本数据集可以设置在32，1w以上数据集可以设置128。以此类推.....
+实际上，同样一个数据集batch设置为32或者64，对训练结果没有太大影响。但是训练到同样效果的时耗不一样。
+
+./train.sh && tail -f /home/van/train/helmet/train.out
+
+# 训练完成后，生成的pt结果在 /root/PycharmProjects/yc-yolov5/runs/train/exp19/weights
+
+# 查看训练loss图 等一会才能看到
+tensorboard --logdir "/root/PycharmProjects/yc-yolov5/runs/train/exp3" --bind_all --port=6007
+
+http://192.168.0.66:6007/
+
+# 检测模型效果
+
+# 看图，看效果 根据模型传入验证集查看结果
+python detect.py --weights /root/PycharmProjects/yc-yolov5/runs/train/exp3/weights/best.pt --source /home/van/dataset/helmet_test2/images/val
+
+在/root/PycharmProjects/yc-yolov5/runs/detect 查看推理结果
+
+#看数据，看识别率
+python eval.py --weight best.pt --data data/helmet_val.yaml
+
+# 将pt模型转为wts格式，tensort 需要用到wts格式
+python gen_wts.py -w /root/PycharmProjects/yc-yolov5/runs/train/exp3/weights/best.pt -o helmet.wts
+
+# 进入tensorrtx（c++调用tensorrt推理yolov5的代码）
+cd /home/van/PycharmProjects/yc-tensorrtx/yolov5
+
+# 编译c++推理代码，
+
+#编译之前先修改CLASS_NUM参数，/home/ubuntu/tensor/code/tensorrtx/yolov5/yololayer.h
+#编译之前需要安装OpenCV库，如果没安装会报错Could not find a package configuration file provided by "OpenCV"
+
+mkdir build
+cd build
+cmake ..
+make
+# 得到yolov5可执行程序
+
+
+# wts格式转为engine格式
+./yolov5 -s /root/PycharmProjects/yc-yolov5/helmet.wts helmet.engine s
+
+#cp helmet.engine /data/hdd/Cluster-3.0-86/platformsry/tyt/tytb.so
+
+#报错cudnn版本不对
+重新安装cudnn对应版本，删除配置
+sudo rm -rf /usr/local/cuda/include/cudnn.h
+sudo rm -rf /usr/local/cuda/lib64/libcudnn*
+
+# 测试推理,在当前目录生成推理结果
+./yolov5 -d helmet.engine /home/van/dataset/helmet_test2/images/val
