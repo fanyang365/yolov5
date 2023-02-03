@@ -368,7 +368,9 @@ def train(hyp):
 
 
 if __name__ == '__main__':
+    print(1)
     check_git_status()
+    print(2)
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', type=int, default=300)
     parser.add_argument('--batch-size', type=int, default=16)

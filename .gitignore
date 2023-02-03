@@ -19,6 +19,8 @@
 *.avi
 *.data
 *.json
+*.out
+*.wts
 
 *.cfg
 !cfg/yolov3*.cfg
@@ -26,6 +28,7 @@
 storage.googleapis.com
 runs/*
 data/*
+dataset/*
 !data/samples/zidane.jpg
 !data/samples/bus.jpg
 !data/coco.names
